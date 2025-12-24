@@ -19,6 +19,7 @@ pub struct TimeseriesLine {
     label: Option<String>,
     unit: Option<String>,
     color: Option<Color32>,
+    width: Option<f32>,
 }
 
 impl TimeseriesLine {
@@ -30,11 +31,17 @@ impl TimeseriesLine {
             label: Some(id), // TODO?
             unit: None,
             color: None,
+            width: None,
         }
     }
 
     pub fn color(mut self, color: Color32) -> Self {
         self.color = Some(color);
+        self
+    }
+
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = Some(width);
         self
     }
 
@@ -52,7 +59,12 @@ pub struct TimeseriesPlot<'mem, X, Y> {
     view_mode: ViewMode,
 }
 
-impl<'mem, X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>> TimeseriesPlot<'mem, X, Y> {
+impl<
+        'mem,
+        X: TimeseriesXAxis,
+        Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>,
+    > TimeseriesPlot<'mem, X, Y>
+{
     pub fn new(memory: &'mem mut TimeseriesPlotMemory<X, Y>) -> Self {
         let id = memory.id;
         Self {
@@ -136,7 +148,12 @@ impl<'mem, X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::floa
     //}
 }
 
-impl<'a, X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>> egui::widgets::Widget for TimeseriesPlot<'a, X, Y> {
+impl<
+        'a,
+        X: TimeseriesXAxis,
+        Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>,
+    > egui::widgets::Widget for TimeseriesPlot<'a, X, Y>
+{
     fn ui(mut self, ui: &mut Ui) -> Response {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
@@ -183,6 +200,9 @@ impl<'a, X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float:
                     }
                     if let Some(color) = line.color {
                         egui_line = egui_line.color(color);
+                    }
+                    if let Some(width) = line.width {
+                        egui_line = egui_line.width(width);
                     }
 
                     plot_ui.line(egui_line);
