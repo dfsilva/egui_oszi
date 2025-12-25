@@ -27,7 +27,10 @@ pub enum DownsamplingMethod {
 }
 
 impl DownsamplingMethod {
-    fn downsample<Y: Default + num_traits::Float + num_traits::float::TotalOrder>(&self, bucket: &[(f64, Y)]) -> [(f64, Y); 2] {
+    fn downsample<Y: Default + num_traits::Float + num_traits::float::TotalOrder>(
+        &self,
+        bucket: &[(f64, Y)],
+    ) -> [(f64, Y); 2] {
         match self {
             Self::None => {
                 [(0.0, Y::default()), (0.0, Y::default())] // TODO
@@ -65,7 +68,11 @@ pub struct TimeseriesLineMemory<X, Y> {
     x_axis_origin: Option<X>,
 }
 
-impl<X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>> TimeseriesLineMemory<X, Y> {
+impl<
+        X: TimeseriesXAxis,
+        Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>,
+    > TimeseriesLineMemory<X, Y>
+{
     fn new(downsampling_method: DownsamplingMethod) -> Self {
         Self {
             downsampling_method,
@@ -83,6 +90,9 @@ impl<X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::Tot
         } else {
             self.cache_levels[0].truncate(0);
         }
+        // Also clear the cache descriptor so update_cache will rebuild from scratch
+        self.cached_data = None;
+        self.view_cache = None;
     }
 
     fn rebuild_caches<
@@ -252,7 +262,10 @@ impl<X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::Tot
                     points.push([cache_level[cache_level.len() - 1].0, previous_last_y]);
                 }
 
-                let points_f64: Vec<_> = points.into_iter().map(|x| [x[0].into(), x[1].into()]).collect();
+                let points_f64: Vec<_> = points
+                    .into_iter()
+                    .map(|x| [x[0].into(), x[1].into()])
+                    .collect();
 
                 //if points.len() < 50 {
                 //    println!("{:?}", points.iter().map(|p| p[0]).collect::<Vec<_>>());
@@ -328,7 +341,11 @@ pub struct TimeseriesPlotMemory<X, Y> {
     pub(crate) last_auto_bounds: bool,
 }
 
-impl<X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>> TimeseriesPlotMemory<X, Y> {
+impl<
+        X: TimeseriesXAxis,
+        Y: Default + num_traits::Float + num_traits::float::TotalOrder + Into<f64>,
+    > TimeseriesPlotMemory<X, Y>
+{
     /// Create a new memory struct with a unique id.
     pub fn new<I: Into<egui::Id>>(id: I) -> Self {
         Self {
@@ -378,8 +395,10 @@ impl<X: TimeseriesXAxis, Y: Default + num_traits::Float + num_traits::float::Tot
         puffin::profile_function!();
 
         if !self.lines.contains_key(line_id) {
-            self.lines
-                .insert(line_id.clone(), TimeseriesLineMemory::new(self.downsampling_method));
+            self.lines.insert(
+                line_id.clone(),
+                TimeseriesLineMemory::new(self.downsampling_method),
+            );
         }
 
         self.lines
