@@ -54,7 +54,7 @@ impl TimeseriesLine {
 pub struct TimeseriesPlot<'mem, X, Y> {
     memory: &'mem mut TimeseriesPlotMemory<X, Y>,
     group: Option<&'mem mut TimeseriesGroup>,
-    plot: egui_plot::Plot,
+    plot: egui_plot::Plot<'mem>,
     lines: Vec<TimeseriesLine>,
     view_mode: ViewMode,
 }
@@ -73,12 +73,12 @@ impl<
             plot: egui_plot::Plot::new(id)
                 .x_axis_position(egui_plot::VPlacement::Bottom)
                 .y_axis_position(egui_plot::HPlacement::Right)
-                .y_axis_width(3) // TODO
+                .y_axis_min_width(3.0) // TODO
                 .set_margin_fraction(Vec2::new(0.0, 0.05))
                 .allow_scroll(false) // TODO: x only
                 .allow_zoom([true, false])
                 .allow_drag([true, false])
-                .auto_bounds([false, true].into())
+                .auto_bounds(Vec2b::new(false, true))
                 .legend(Legend::default().position(egui_plot::Corner::LeftTop)),
             lines: Vec::new(),
             view_mode: ViewMode::default(),
@@ -166,8 +166,14 @@ impl<
 
             self.plot = self
                 .plot
-                .link_axis(group.link_group_name.clone(), true, group.link_y)
-                .link_cursor(group.link_group_name.clone(), true, group.link_y);
+                .link_axis(
+                    group.link_group_name.clone(),
+                    Vec2b::new(true, group.link_y),
+                )
+                .link_cursor(
+                    group.link_group_name.clone(),
+                    Vec2b::new(true, group.link_y),
+                );
         }
 
         if let ViewMode::AttachedToEdge(_duration) = self.view_mode {
@@ -194,10 +200,9 @@ impl<
 
                     let points = PlotPoints::new(self.memory.plot(&line.id, plot_ui.plot_bounds()));
 
-                    let mut egui_line = egui_plot::Line::new(points);
-                    if let Some(label) = line.label {
-                        egui_line = egui_line.name(label);
-                    }
+                    // egui_plot 0.34 requires name as first arg: Line::new(name, points)
+                    let line_name = line.label.unwrap_or_else(|| line.id.clone());
+                    let mut egui_line = egui_plot::Line::new(line_name, points);
                     if let Some(color) = line.color {
                         egui_line = egui_line.color(color);
                     }
