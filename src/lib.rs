@@ -75,14 +75,35 @@ impl<
                 .y_axis_position(egui_plot::HPlacement::Right)
                 .y_axis_min_width(3.0) // TODO
                 .set_margin_fraction(Vec2::new(0.0, 0.05))
-                .allow_scroll(false) // TODO: x only
-                .allow_zoom([true, false])
-                .allow_drag([true, false])
+                .allow_scroll(false)
+                .allow_zoom(true)
+                .allow_boxed_zoom(true)
+                .allow_drag(false)
                 .auto_bounds(Vec2b::new(false, true))
                 .legend(Legend::default().position(egui_plot::Corner::LeftTop)),
             lines: Vec::new(),
             view_mode: ViewMode::default(),
         }
+    }
+
+    pub fn allow_drag(mut self, drag: impl Into<Vec2b>) -> Self {
+        self.plot = self.plot.allow_drag(drag);
+        self
+    }
+
+    pub fn allow_zoom(mut self, zoom: impl Into<Vec2b>) -> Self {
+        self.plot = self.plot.allow_zoom(zoom);
+        self
+    }
+
+    pub fn allow_scroll(mut self, scroll: impl Into<Vec2b>) -> Self {
+        self.plot = self.plot.allow_scroll(scroll);
+        self
+    }
+
+    pub fn allow_boxed_zoom(mut self, boxed_zoom: bool) -> Self {
+        self.plot = self.plot.allow_boxed_zoom(boxed_zoom);
+        self
     }
 
     // TODO: either expose all relevant egui plot options here or maybe add a
