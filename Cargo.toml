@@ -9,9 +9,9 @@ edition = "2021"
 log = "0.4"
 num-traits = "0.2"
 
-eframe = { version = "0.33", default-features = false, features = ["glow", "x11", "wayland"] }
-egui = { version = "0.33", default-features = false }
-egui_extras = { version = "0.33", default-features = false }
+eframe = { version = "0.33.3", default-features = false, features = ["glow", "x11", "wayland"] }
+egui = { version = "0.33.3", default-features = false }
+egui_extras = { version = "0.33.3", default-features = false }
 egui_plot = { version = "0.34", default-features = false }
 
 puffin = { version = "0.19", optional = true }
