@@ -78,8 +78,8 @@ impl<
                 .allow_scroll(false)
                 .allow_zoom(true)
                 .allow_boxed_zoom(true)
-                .allow_drag(false)
-                .auto_bounds(Vec2b::new(false, true))
+                .allow_drag(true)
+                .auto_bounds(Vec2b::new(true, true))
                 .legend(Legend::default().position(egui_plot::Corner::LeftTop)),
             lines: Vec::new(),
             view_mode: ViewMode::default(),
@@ -241,13 +241,12 @@ impl<
                 //         self.memory.last_view_width);
             });
 
-        // For zooming, we have to reattach our plot to the edge afterwards
-        if plot_response.response.hover_pos().is_some() && self.memory.last_auto_bounds {
-            let zoom_delta = ui.input(|i| i.zoom_delta_2d());
-            if zoom_delta.x != 1.0 {
-                self.memory.reset_auto_bounds_next_frame = true;
-                self.memory.last_view_width /= zoom_delta[0] as f64;
-                if let Some(group) = self.group {
+        // Track view width for AttachedToEdge mode
+        if let Some(group) = self.group {
+            if plot_response.response.hover_pos().is_some() {
+                let zoom_delta = ui.input(|i| i.zoom_delta_2d());
+                if zoom_delta.x != 1.0 {
+                    self.memory.last_view_width /= zoom_delta[0] as f64;
                     group.last_view_width = Some(self.memory.last_view_width);
                 }
             }
