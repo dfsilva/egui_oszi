@@ -1,5 +1,8 @@
-use egui::{Color32, Response, Ui, Vec2, Vec2b};
-use egui_plot::{Legend, PlotPoints};
+use egui::{Color32, Response, Shape, Ui, Vec2, Vec2b};
+use egui_plot::{
+    Legend, PlotBounds, PlotGeometry, PlotItem, PlotItemBase, PlotPoints, PlotPoint,
+    PlotTransform,
+};
 
 mod memory;
 mod traits;
@@ -12,6 +15,80 @@ pub enum ViewMode {
     #[default]
     Complete,
     AttachedToEdge(f64), // TODO: use X axis diff unit?
+}
+
+
+/// A shaded vertical band spanning the full height of the plot.
+///
+/// Used to mark stretches of the x-axis that belong together — a flight regime, a
+/// dropout, a paused section — so a reader can see which part of a trace they are
+/// looking at without cross-referencing a separate table.
+///
+/// Contributes nothing to the plot's auto-bounds. A band drawn to the current
+/// y-bounds would be folded back into the next frame's auto-bounds along with the
+/// margin `egui_plot` adds, and the view would creep wider every frame. Bands always
+/// mark stretches of a timeline the traces already cover, so they never need to extend
+/// the x-range either.
+pub struct PlotBand {
+    base: PlotItemBase,
+    start: f64,
+    end: f64,
+    color: Color32,
+}
+
+impl PlotBand {
+    pub fn new(name: impl ToString, start: f64, end: f64, color: Color32) -> Self {
+        // Accept the range either way round so callers need not normalise it.
+        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        Self {
+            base: PlotItemBase::new(name.to_string()),
+            start,
+            end,
+            color,
+        }
+    }
+}
+
+impl PlotItem for PlotBand {
+    fn shapes(&self, _ui: &Ui, transform: &PlotTransform, shapes: &mut Vec<Shape>) {
+        // Fill the full visible height, exactly as `VLine` draws its full-height line.
+        let bounds = transform.bounds();
+        let top_left =
+            transform.position_from_point(&PlotPoint::new(self.start, bounds.max()[1]));
+        let bottom_right =
+            transform.position_from_point(&PlotPoint::new(self.end, bounds.min()[1]));
+        let rect = egui::Rect::from_two_pos(top_left, bottom_right);
+        // A band narrower than a pixel would vanish; widen it so a brief regime is
+        // still visible rather than silently absent.
+        let rect = if rect.width() < 1.0 {
+            egui::Rect::from_min_size(rect.min, egui::vec2(1.0, rect.height()))
+        } else {
+            rect
+        };
+        shapes.push(Shape::rect_filled(rect, 0.0, self.color));
+    }
+
+    fn initialize(&mut self, _x_range: std::ops::RangeInclusive<f64>) {}
+
+    fn color(&self) -> Color32 {
+        self.color
+    }
+
+    fn geometry(&self) -> PlotGeometry<'_> {
+        PlotGeometry::None
+    }
+
+    fn bounds(&self) -> PlotBounds {
+        PlotBounds::NOTHING
+    }
+
+    fn base(&self) -> &PlotItemBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut PlotItemBase {
+        &mut self.base
+    }
 }
 
 pub struct TimeseriesLine {
@@ -56,6 +133,7 @@ pub struct TimeseriesPlot<'mem, X, Y> {
     group: Option<&'mem mut TimeseriesGroup>,
     plot: egui_plot::Plot<'mem>,
     lines: Vec<TimeseriesLine>,
+    bands: Vec<PlotBand>,
     view_mode: ViewMode,
 }
 
@@ -82,6 +160,7 @@ impl<
                 .auto_bounds(Vec2b::new(true, true))
                 .legend(Legend::default().position(egui_plot::Corner::LeftTop)),
             lines: Vec::new(),
+            bands: Vec::new(),
             view_mode: ViewMode::default(),
         }
     }
@@ -137,6 +216,16 @@ impl<
     // TODO: change unit ot x axis diff
     pub fn follow_edge(mut self, duration: f64) -> Self {
         self.view_mode = ViewMode::AttachedToEdge(duration);
+        self
+    }
+
+    /// Shade stretches of the x-axis behind the traces.
+    ///
+    /// Bands are drawn before the lines so they read as background rather than as
+    /// data, and they are excluded from the legend — with one band per span a legend
+    /// entry each would bury the actual series.
+    pub fn bands(mut self, bands: impl IntoIterator<Item = PlotBand>) -> Self {
+        self.bands.extend(bands);
         self
     }
 
@@ -216,6 +305,11 @@ impl<
 
                 self.memory.last_auto_bounds = plot_ui.auto_bounds().x;
 
+                // Behind the traces, so they read as background.
+                for band in self.bands {
+                    plot_ui.add(band);
+                }
+
                 for line in self.lines {
                     // TODO: cropping
 
@@ -253,5 +347,64 @@ impl<
         }
 
         plot_response.response
+    }
+}
+
+#[cfg(test)]
+mod band_tests {
+    use super::*;
+
+    #[test]
+    fn a_reversed_range_is_normalised() {
+        // Callers build these from span boundaries; accepting either order means a
+        // caller that subtracts the wrong way round still gets a visible band rather
+        // than a silently empty one.
+        let band = PlotBand::new("x", 9.0, 4.0, Color32::RED);
+        assert_eq!((band.start, band.end), (4.0, 9.0));
+    }
+
+    #[test]
+    fn an_ordered_range_is_left_alone() {
+        let band = PlotBand::new("x", 4.0, 9.0, Color32::RED);
+        assert_eq!((band.start, band.end), (4.0, 9.0));
+    }
+
+    // Placing a band on a non-f64 axis needs the plot's own origin, and that origin is
+    // the first sample added. Answering before any data exists would have to invent one,
+    // which would then shift every later sample relative to it.
+    #[test]
+    fn plot_x_declines_to_answer_before_there_is_data() {
+        let memory: TimeseriesPlotMemory<std::time::Instant, f32> =
+            TimeseriesPlotMemory::new("empty");
+        assert_eq!(memory.plot_x(std::time::Instant::now()), None);
+    }
+
+    // With data present it converts against that same origin, so a band lands where the
+    // caller means it to.
+    #[test]
+    fn plot_x_measures_from_the_first_sample() {
+        use std::time::{Duration, Instant};
+        let mut memory: TimeseriesPlotMemory<Instant, f32> = TimeseriesPlotMemory::new("t");
+        let origin = Instant::now();
+        memory.update_cache(
+            &"line".to_string(),
+            vec![(origin, Some(0.0f32)), (origin + Duration::from_secs(1), Some(1.0f32))]
+                .into_iter(),
+        );
+        let five = memory
+            .plot_x(origin + Duration::from_secs(5))
+            .expect("origin is established once data exists");
+        assert!((five - 5.0).abs() < 1e-6, "got {five}");
+        assert_eq!(memory.plot_x(origin), Some(0.0));
+    }
+
+    // Bands mark stretches of a timeline the traces already cover. Contributing bounds
+    // would fold the band's extent — and egui_plot's auto-bounds margin — back into the
+    // next frame's view, which creeps wider every frame.
+    #[test]
+    fn a_band_contributes_no_bounds() {
+        let band = PlotBand::new("x", 4.0, 9.0, Color32::RED);
+        let bounds = PlotItem::bounds(&band);
+        assert_eq!(bounds, PlotBounds::NOTHING);
     }
 }

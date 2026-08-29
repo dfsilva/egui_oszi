@@ -19,3 +19,11 @@ puffin_egui = { version = "0.29", optional = true }
 
 [features]
 profiling = ["dep:puffin", "dep:puffin_egui"]
+
+# Only the `noise` example needs these. Without them `cargo test` fails to build the
+# example and reports errors that have nothing to do with the library.
+[dev-dependencies]
+rand = "0.8"
+rand_distr = "0.4"
+env_logger = "0.11"
+

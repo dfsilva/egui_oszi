@@ -10,7 +10,7 @@ use rand_distr::Distribution;
 
 use eframe::egui;
 
-use egui_samplers::{TimeseriesLine, TimeseriesPlot, TimeseriesPlotMemory};
+use egui_oszi::{PlotBand, TimeseriesLine, TimeseriesPlot, TimeseriesPlotMemory};
 
 // ~1kHz of garbage
 const SAMPLE_RATE: f64 = 1.0e3;
@@ -24,7 +24,7 @@ struct NoiseExample {
     first_frame: Instant,
     last_frame: Instant,
     // state for our plot widget
-    plot_memory: TimeseriesPlotMemory<Instant>,
+    plot_memory: TimeseriesPlotMemory<Instant, f32>,
 }
 
 impl NoiseExample {
@@ -93,7 +93,28 @@ impl eframe::App for NoiseExample {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Build a time series widget using plot memory.
+            // Shade alternating five-second stretches, to show how a caller marks
+            // regions of interest behind the traces.
+            //
+            // Band positions are in the plot's own coordinate space. With an `Instant`
+            // axis that is seconds since the first sample, which only the memory knows
+            // — hence `plot_x` rather than converting here.
+            let elapsed = self.last_frame.duration_since(self.first_frame).as_secs_f64();
+            let bands: Vec<PlotBand> = (0..(elapsed as u64 / 10))
+                .filter_map(|i| {
+                    let start = self.first_frame + Duration::from_secs(i * 10 + 5);
+                    let end = start + Duration::from_secs(5);
+                    Some(PlotBand::new(
+                        "every other 5s",
+                        self.plot_memory.plot_x(start)?,
+                        self.plot_memory.plot_x(end)?,
+                        egui::Color32::from_rgba_unmultiplied(0x45, 0x85, 0x88, 40),
+                    ))
+                })
+                .collect();
+
             let timeseries = TimeseriesPlot::new(&mut self.plot_memory)
+                .bands(bands)
                 // Give an iterator over all values to be plotted
                 .line(
                     TimeseriesLine::new("Ferrisses").unit("M🦀/s"),
@@ -114,5 +135,5 @@ fn main() -> Result<(), eframe::Error> {
 
     let options = eframe::NativeOptions::default();
     let app = NoiseExample::new();
-    eframe::run_native("NoiseExample", options, Box::new(|_cc| Box::new(app)))
+    eframe::run_native("NoiseExample", options, Box::new(|_cc| Ok(Box::new(app))))
 }

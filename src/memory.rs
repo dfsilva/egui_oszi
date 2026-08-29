@@ -358,6 +358,24 @@ impl<
         }
     }
 
+    /// Convert an x-axis value into the plot's own coordinate space.
+    ///
+    /// Needed to place anything positional that is not a data point — a [`PlotBand`]
+    /// is the usual case — when `X` is not already `f64`. An `Instant` axis is stored
+    /// relative to the first sample ever added, so a caller has no way to compute the
+    /// same number on its own.
+    ///
+    /// Returns `None` until some data has been added. The origin *is* the first sample,
+    /// so establishing one here would silently shift every later sample relative to it;
+    /// answering "not yet" is the only correct thing to do.
+    ///
+    /// [`PlotBand`]: crate::PlotBand
+    pub fn plot_x(&self, x: X) -> Option<f64> {
+        let origin = self.lines.values().find_map(|l| l.x_axis_origin.clone())?;
+        let mut anchored = Some(origin);
+        Some(x.to_f64(&mut anchored))
+    }
+
     /// Most of the time, changes to the plotted data should be picked up
     /// automatically, but certain changes might be hard to detect, for
     /// instance if the length of the data and most of the content remains
