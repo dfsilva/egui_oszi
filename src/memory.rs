@@ -339,6 +339,10 @@ pub struct TimeseriesPlotMemory<X, Y> {
     pub(crate) reset_auto_bounds_next_frame: bool,
     pub(crate) last_view_width: f64,
     pub(crate) last_auto_bounds: bool,
+    /// X-range to apply on the next frame, set by a click on a band.
+    ///
+    /// Deferred by a frame because the click is only known after the plot has drawn.
+    pub(crate) pending_x_bounds: Option<(f64, f64)>,
 }
 
 impl<
@@ -355,6 +359,7 @@ impl<
             reset_auto_bounds_next_frame: true,
             last_view_width: 10.0,
             last_auto_bounds: true,
+            pending_x_bounds: None,
         }
     }
 

@@ -134,6 +134,7 @@ pub struct TimeseriesPlot<'mem, X, Y> {
     plot: egui_plot::Plot<'mem>,
     lines: Vec<TimeseriesLine>,
     bands: Vec<PlotBand>,
+    zoom_to_band_on_click: bool,
     view_mode: ViewMode,
 }
 
@@ -161,6 +162,7 @@ impl<
                 .legend(Legend::default().position(egui_plot::Corner::LeftTop)),
             lines: Vec::new(),
             bands: Vec::new(),
+            zoom_to_band_on_click: false,
             view_mode: ViewMode::default(),
         }
     }
@@ -226,6 +228,19 @@ impl<
     /// entry each would bury the actual series.
     pub fn bands(mut self, bands: impl IntoIterator<Item = PlotBand>) -> Self {
         self.bands.extend(bands);
+        self
+    }
+
+    /// Clicking inside a band zooms the x-axis to it.
+    ///
+    /// Handled here rather than by the caller because the bands' extents are already
+    /// known here, and because the resulting bounds have to be applied on the *next*
+    /// frame — the click is only known once the plot has been drawn.
+    ///
+    /// `egui_plot` already resets to the full view on double-click, so the pair reads
+    /// as zoom-in / zoom-out without needing another control.
+    pub fn zoom_to_band_on_click(mut self, enabled: bool) -> Self {
+        self.zoom_to_band_on_click = enabled;
         self
     }
 
@@ -304,6 +319,28 @@ impl<
                 }
 
                 self.memory.last_auto_bounds = plot_ui.auto_bounds().x;
+
+                // A zoom requested by last frame's click. Applied before anything is
+                // drawn so the traces are already cropped to it this frame.
+                if let Some((start, end)) = self.memory.pending_x_bounds.take() {
+                    plot_ui.set_plot_bounds_x(start..=end);
+                }
+
+                if self.zoom_to_band_on_click {
+                    // A plain click is otherwise unused: dragging pans, scrolling and
+                    // pinching zoom, and boxed zoom is on the right button.
+                    if plot_ui.response().clicked() {
+                        if let Some(at) = plot_ui.pointer_coordinate() {
+                            if let Some(band) = self
+                                .bands
+                                .iter()
+                                .find(|b| at.x >= b.start && at.x <= b.end)
+                            {
+                                self.memory.pending_x_bounds = Some((band.start, band.end));
+                            }
+                        }
+                    }
+                }
 
                 // Behind the traces, so they read as background.
                 for band in self.bands {
@@ -396,6 +433,29 @@ mod band_tests {
             .expect("origin is established once data exists");
         assert!((five - 5.0).abs() < 1e-6, "got {five}");
         assert_eq!(memory.plot_x(origin), Some(0.0));
+    }
+
+    // The click lands on whichever band contains it. Overlaps should not happen — a
+    // caller derives bands from spans that tile a timeline — but if one slips through,
+    // taking the first keeps the behaviour predictable rather than order-dependent on
+    // whatever the layout happened to be.
+    #[test]
+    fn a_click_selects_the_band_it_lands_in() {
+        let bands = [
+            PlotBand::new("a", 0.0, 10.0, Color32::RED),
+            PlotBand::new("b", 10.0, 20.0, Color32::BLUE),
+        ];
+        let hit = |x: f64| {
+            bands
+                .iter()
+                .find(|b| x >= b.start && x <= b.end)
+                .map(|b| (b.start, b.end))
+        };
+        assert_eq!(hit(5.0), Some((0.0, 10.0)));
+        assert_eq!(hit(15.0), Some((10.0, 20.0)));
+        // Outside every band: nothing to zoom to, so the click does nothing.
+        assert_eq!(hit(25.0), None);
+        assert_eq!(hit(-1.0), None);
     }
 
     // Bands mark stretches of a timeline the traces already cover. Contributing bounds
