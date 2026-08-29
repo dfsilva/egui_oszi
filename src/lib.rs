@@ -37,11 +37,19 @@ pub struct PlotBand {
 }
 
 impl PlotBand {
+    /// `name` is for hover text and debugging only — bands never reach the legend.
+    ///
+    /// `egui_plot` builds its legend from every item with a non-empty name, so bands
+    /// named normally would each claim a legend row. Even deduplicated by name that put
+    /// the regime labels above the actual traces, pushing the data the reader came for
+    /// down the list. The name is therefore blanked here, which is exactly the test
+    /// `egui_plot` uses to skip an item (`!item.name().is_empty()`).
     pub fn new(name: impl ToString, start: f64, end: f64, color: Color32) -> Self {
+        let _ = name;
         // Accept the range either way round so callers need not normalise it.
         let (start, end) = if start <= end { (start, end) } else { (end, start) };
         Self {
-            base: PlotItemBase::new(name.to_string()),
+            base: PlotItemBase::new(String::new()),
             start,
             end,
             color,
@@ -329,7 +337,13 @@ impl<
                 if self.zoom_to_band_on_click {
                     // A plain click is otherwise unused: dragging pans, scrolling and
                     // pinching zoom, and boxed zoom is on the right button.
-                    if plot_ui.response().clicked() {
+                    //
+                    // The second click of a double-click also reports `clicked()`, so
+                    // without the `double_clicked()` guard this re-applied the zoom on
+                    // the very frame `egui_plot` was resetting to the full view — and
+                    // the double-click appeared to do nothing at all.
+                    let response = plot_ui.response();
+                    if response.clicked() && !response.double_clicked() {
                         if let Some(at) = plot_ui.pointer_coordinate() {
                             if let Some(band) = self
                                 .bands
@@ -461,6 +475,18 @@ mod band_tests {
     // Bands mark stretches of a timeline the traces already cover. Contributing bounds
     // would fold the band's extent — and egui_plot's auto-bounds margin — back into the
     // next frame's view, which creeps wider every frame.
+    // Bands are background, not data. egui_plot puts every named item in the legend,
+    // so a named band claimed a legend row and — sorted alphabetically — pushed the
+    // traces the reader actually came for below the regime labels.
+    #[test]
+    fn a_band_stays_out_of_the_legend() {
+        let band = PlotBand::new("Aggressive", 0.0, 1.0, Color32::RED);
+        assert!(
+            PlotItem::name(&band).is_empty(),
+            "a named band would take a legend row"
+        );
+    }
+
     #[test]
     fn a_band_contributes_no_bounds() {
         let band = PlotBand::new("x", 4.0, 9.0, Color32::RED);
